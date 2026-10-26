@@ -53,6 +53,15 @@ DTSTART;TZID=Romance Standard Time:20261026T120000
 DTEND;TZID=Romance Standard Time:20261026T130000
 END:VEVENT
 BEGIN:VEVENT
+UID:followed
+SUMMARY:Following: Morning Meeting
+TRANSP:TRANSPARENT
+X-MICROSOFT-CDO-BUSYSTATUS:FREE
+X-MICROSOFT-CDO-INTENDEDSTATUS:BUSY
+DTSTART;TZID=Romance Standard Time:20261026T090000
+DTEND;TZID=Romance Standard Time:20261026T091500
+END:VEVENT
+BEGIN:VEVENT
 UID:holiday
 SUMMARY:Holiday
 DTSTART;VALUE=DATE:20261026
@@ -78,8 +87,13 @@ class OccurrencesTest(unittest.TestCase):
     def test_cancelled_dropped(self):
         self.assertNotIn("cancelled", self.events)
 
+    def test_followed_meeting_is_not_free(self):
+        e = self.events["followed"]
+        self.assertEqual((e["title"], e["free"], e["following"]), ("Morning Meeting", False, True))
+
     def test_free_and_all_day(self):
         self.assertTrue(self.events["free"]["free"])
+        self.assertFalse(self.events["free"]["following"])
         self.assertEqual(self.events["free"]["joinUrl"], "https://meet.google.com/abc-defg-hij")
         self.assertTrue(self.events["holiday"]["allDay"])
 

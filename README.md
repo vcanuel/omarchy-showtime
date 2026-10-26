@@ -18,7 +18,9 @@ Slack link found in the event.
   Google Calendar, iCloud, Fastmail, Proton, Nextcloud… several at once.
   Recurring events, time zones (including Outlook's Windows zone names) and
   cancelled occurrences are handled.
-- All-day events and events marked **free** never interrupt you.
+- All-day events and events marked **free** never interrupt you. Outlook
+  meetings you **follow** instead of accepting still do, so you can decide
+  on the spot (set `"splashFollowing": false` to skip them).
 - Follows your Omarchy theme and language (English and French so far).
 
 ## Install
@@ -71,7 +73,7 @@ The widget's settings live in its entry in `~/.config/omarchy/shell.json`:
 The splash reads an optional `~/.config/omarchy/showtime/settings.json`:
 
 ```json
-{ "leadSeconds": 60, "graceSeconds": 180, "snoozeSeconds": 60, "syncMinutes": 5 }
+{ "leadSeconds": 60, "graceSeconds": 180, "snoozeSeconds": 60, "syncMinutes": 5, "splashFollowing": true }
 ```
 
 ## Commands

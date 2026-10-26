@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "vcanuel.showtime",
   "name": "Showtime",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Vincent Canuel",
   "license": "MIT",
   "description": "Never miss a meeting: your next calendar event in the bar, and a fullscreen splash a minute before it starts, with a Join button.",

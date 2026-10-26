@@ -13,7 +13,8 @@ import "Showtime.js" as Showtime
 //   - shortly before each timed event, takes over the screen with a
 //     fullscreen splash: Join (Enter), snooze (S), dismiss (Escape).
 // Optional ~/.config/omarchy/showtime/settings.json:
-//   { "leadSeconds": 60, "graceSeconds": 180, "snoozeSeconds": 60, "syncMinutes": 5 }
+//   { "leadSeconds": 60, "graceSeconds": 180, "snoozeSeconds": 60, "syncMinutes": 5,
+//     "splashFollowing": true }
 // IPC: omarchy-shell vcanuel.showtime sync|join|dismiss|test
 Item {
   id: root
@@ -40,6 +41,8 @@ Item {
   readonly property int graceMs: setting("graceSeconds", 180, 0, 3600) * 1000
   readonly property int snoozeMs: setting("snoozeSeconds", 60, 10, 3600) * 1000
   readonly property int syncIntervalMs: setting("syncMinutes", 5, 1, 120) * 60000
+  // Outlook meetings answered with "Follow" rather than accepted.
+  readonly property bool splashFollowing: settings.splashFollowing !== false
 
   property var events: []
   property double nowMs: Date.now()
@@ -58,7 +61,7 @@ Item {
     root.nowMs = Date.now()
     var now = root.nowMs
     var added = []
-    var due = Showtime.due(root.events, now, root.leadMs, root.graceMs)
+    var due = Showtime.due(root.events, now, root.leadMs, root.graceMs, !root.splashFollowing)
     for (var i = 0; i < due.length; i++) {
       if (root.shownIds[due[i].id]) continue
       root.shownIds[due[i].id] = true

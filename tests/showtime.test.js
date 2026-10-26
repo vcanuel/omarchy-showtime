@@ -24,6 +24,7 @@ const parsed = S.parse(JSON.stringify({ error: "partial", events: [
   ev("next", 5, 35, { joinUrl: "https://teams.microsoft.com/l/meetup-join/x" }),
   ev("later", 120, 150, { joinUrl: "javascript:alert(1)" }),
   ev("free", 1, 30, { free: true }),
+  ev("followed", 6, 20, { following: true }),
   ev("allday", -600, 840, { allDay: true }),
   { id: "broken", start: "nope", end: "nope" },
 ] }))
@@ -34,18 +35,20 @@ const ids = list => Array.from(list, e => e.id)
 assert.strictEqual(parsed.error, "partial")
 assert.strictEqual(S.parse('{"error":"<img src=x>"}').error, "", "unknown error codes are dropped")
 assert.strictEqual(S.parse("not json").events.length, 0)
-assert.strictEqual(events.length, 5, "events with unparsable dates are dropped")
+assert.strictEqual(events.length, 6, "events with unparsable dates are dropped")
 assert.strictEqual(events.find(e => e.id === "later").joinUrl, "", "only https join links are kept")
 
 assert.strictEqual(S.current(events, now)[0].id, "running")
-assert.deepStrictEqual(ids(S.upcoming(events, now)), ["free", "next", "later"])
+assert.deepStrictEqual(ids(S.upcoming(events, now)), ["free", "next", "followed", "later"])
 assert.strictEqual(S.joinable(events, now).id, "next", "an event starting soon beats the running one")
 assert.strictEqual(S.joinable(events, now - 60 * 60000).id, "next", "only events with a link are joinable")
 
 const lead = 60000, grace = 180000
 assert.deepStrictEqual(ids(S.due(events, now + 4 * 60000, lead, grace)), ["next"], "free events never splash")
+assert.deepStrictEqual(ids(S.due(events, now + 5.5 * 60000, lead, grace)), ["next", "followed"], "followed meetings splash")
+assert.deepStrictEqual(ids(S.due(events, now + 5.5 * 60000, lead, grace, true)), ["next"], "unless skipped")
 assert.deepStrictEqual(ids(S.due(events, now, lead, grace)), [], "nothing due yet")
-assert.deepStrictEqual(ids(S.due(events, now + 7 * 60000, lead, grace)), ["next"], "still due within grace")
+assert.deepStrictEqual(ids(S.due(events, now + 7 * 60000, lead, grace, true)), ["next"], "still due within grace")
 assert.deepStrictEqual(ids(S.due(events, now + 9 * 60000, lead, grace)), [], "gone after grace")
 
 assert.strictEqual(S.durationText(30000, strings), "1 min")

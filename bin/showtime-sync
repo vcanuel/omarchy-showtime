@@ -48,6 +48,9 @@ JOIN_PATTERNS = [
 ]
 # Outlook and Google keep cancelled occurrences, prefixed, in published feeds.
 CANCELLED_PREFIX = re.compile(r"^\s*(canceled|cancelled|annulé|annule|abgesagt|cancelado|annullato)\s*:", re.I)
+# Outlook's "Follow" response: the meeting stays in the calendar, shown as
+# free, with the title prefixed.
+FOLLOWING_PREFIX = re.compile(r"^\s*(following|suivi|suivre|folgen|siguiendo|seguendo)\s*:\s*", re.I)
 
 
 def write_state(payload):
@@ -142,6 +145,14 @@ def occurrences(data, start, end, local_tz):
             e = s + ev.get("DURATION").dt
         else:
             e = s + (dt.timedelta(days=1) if all_day else dt.timedelta(0))
+        # A meeting you follow rather than accept is free for you but busy
+        # for its organizer: it is still a meeting, not a free slot.
+        free = str(ev.get("TRANSP") or "").upper() == "TRANSPARENT"
+        intended = str(ev.get("X-MICROSOFT-CDO-INTENDEDSTATUS") or "").upper()
+        following = bool(FOLLOWING_PREFIX.match(title)) or (free and intended in ("BUSY", "TENTATIVE", "OOF"))
+        if following:
+            title = FOLLOWING_PREFIX.sub("", title, count=1)
+            free = False
         yield {
             "id": "%s|%s" % (text(ev.get("UID"), 300), s.isoformat()),
             "title": title,
@@ -150,7 +161,8 @@ def occurrences(data, start, end, local_tz):
             "allDay": all_day,
             "location": text(ev.get("LOCATION"), 200),
             "joinUrl": join_url(ev),
-            "free": str(ev.get("TRANSP") or "").upper() == "TRANSPARENT",
+            "free": free,
+            "following": following,
         }
 
 

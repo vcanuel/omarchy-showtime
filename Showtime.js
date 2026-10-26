@@ -19,6 +19,7 @@ function parse(text) {
         endMs: Date.parse(e.end),
         allDay: !!e.allDay,
         free: !!e.free,
+        following: !!e.following,
         location: String(e.location || "").slice(0, 200),
         joinUrl: /^https:\/\/[^\s]+$/.test(String(e.joinUrl || "")) ? String(e.joinUrl).slice(0, 2000) : ""
       }
@@ -53,10 +54,12 @@ function joinable(events, nowMs) {
 
 // Events whose splash is due: starting within leadMs, or started less than
 // graceMs ago (the machine was asleep, the shell restarted). Free events
-// (TRANSP:TRANSPARENT) never interrupt.
-function due(events, nowMs, leadMs, graceMs) {
+// (TRANSP:TRANSPARENT) never interrupt; followed Outlook meetings do unless
+// skipFollowing.
+function due(events, nowMs, leadMs, graceMs, skipFollowing) {
   return timed(events).filter(function(e) {
-    return !e.free && e.startMs - nowMs <= leadMs && nowMs < e.startMs + graceMs
+    return !e.free && !(skipFollowing && e.following)
+      && e.startMs - nowMs <= leadMs && nowMs < e.startMs + graceMs
   })
 }
 
