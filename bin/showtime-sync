@@ -1,0 +1,187 @@
+#!/usr/bin/python3 -I
+# Fetch the ICS calendars listed in ~/.config/omarchy/showtime/calendars
+# (one https:// or webcal:// URL per line, # comments allowed) and write the
+# events of the coming two days, recurrences expanded, to
+# ~/.local/state/omarchy/showtime/events.json for the bar widget and the
+# fullscreen splash. Published calendar URLs are secrets: keep that file
+# mode 600.
+#
+# Errors are written as codes ("error": "no-calendars", "missing-deps",
+# "fetch-failed", "partial") so the shell can show them in the user's
+# language; the details go to stderr.
+
+import datetime as dt
+import json
+import os
+import re
+import sys
+import tempfile
+import urllib.request
+
+try:
+    import icalendar
+    import recurring_ical_events
+except ImportError:
+    icalendar = None
+
+HOME = os.path.expanduser("~")
+CONFIG = os.environ.get("SHOWTIME_CALENDARS") or os.path.join(HOME, ".config/omarchy/showtime/calendars")
+STATE_DIR = os.environ.get("SHOWTIME_STATE_DIR") or os.path.join(HOME, ".local/state/omarchy/showtime")
+OUTPUT = os.path.join(STATE_DIR, "events.json")
+
+MAX_BYTES = 20 * 1024 * 1024
+MAX_EVENTS = 200
+TIMEOUT = 30
+PAST = dt.timedelta(hours=12)
+AHEAD = dt.timedelta(hours=48)
+
+JOIN_PATTERNS = [
+    r"https://teams\.microsoft\.com/l/meetup-join/[^\s\"'<>]+",
+    r"https://teams\.live\.com/meet/[^\s\"'<>]+",
+    r"https://[\w.-]*zoom\.us/[jw]/[^\s\"'<>]+",
+    r"https://meet\.google\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}",
+    r"https://[\w.-]*webex\.com/[^\s\"'<>]+",
+    r"https://whereby\.com/[^\s\"'<>]+",
+    r"https://meet\.jit\.si/[^\s\"'<>]+",
+    r"https://app\.slack\.com/huddle/[^\s\"'<>]+",
+    r"https://facetime\.apple\.com/join[^\s\"'<>]+",
+]
+# Outlook and Google keep cancelled occurrences, prefixed, in published feeds.
+CANCELLED_PREFIX = re.compile(r"^\s*(canceled|cancelled|annulé|annule|abgesagt|cancelado|annullato)\s*:", re.I)
+
+
+def write_state(payload):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=STATE_DIR, prefix=".events.")
+    with os.fdopen(fd, "w") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, OUTPUT)
+
+
+def fail(code, detail):
+    # Keep the last good events so a network blip does not empty the bar.
+    previous = {}
+    try:
+        with open(OUTPUT) as f:
+            previous = json.load(f)
+    except (OSError, ValueError):
+        pass
+    previous["error"] = code
+    previous["errorAt"] = dt.datetime.now(dt.timezone.utc).isoformat()
+    write_state(previous)
+    print("showtime-sync: " + detail, file=sys.stderr)
+    sys.exit(1)
+
+
+def read_urls():
+    try:
+        with open(CONFIG) as f:
+            lines = [line.strip() for line in f]
+    except OSError:
+        lines = []
+    urls = [line for line in lines if line and not line.startswith("#")]
+    urls = ["https://" + u[len("webcal://"):] if u.startswith("webcal://") else u for u in urls]
+    if any(not u.startswith("https://") for u in urls):
+        fail("no-calendars", "only https:// and webcal:// calendar URLs are accepted")
+    if not urls:
+        fail("no-calendars", "add an ICS URL to " + CONFIG)
+    return urls
+
+
+def fetch(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "omarchy-showtime/1.0"})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        data = resp.read(MAX_BYTES + 1)
+    if len(data) > MAX_BYTES:
+        raise ValueError("calendar larger than 20 MB")
+    return data
+
+
+def text(value, limit):
+    return str(value or "").replace("\r", "").strip()[:limit]
+
+
+def join_url(event):
+    haystack = " ".join(
+        str(event.get(key) or "")
+        for key in ("X-MICROSOFT-SKYPETEAMSMEETINGURL", "X-MICROSOFT-ONLINEMEETINGCONFLINK",
+                    "X-GOOGLE-CONFERENCE", "LOCATION", "URL", "DESCRIPTION", "X-ALT-DESC")
+    )
+    for pattern in JOIN_PATTERNS:
+        m = re.search(pattern, haystack)
+        if m:
+            return m.group(0).rstrip(".,;)>]")[:2000]
+    return ""
+
+
+def as_utc(value, local_tz):
+    if isinstance(value, dt.datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=local_tz)
+        return value.astimezone(dt.timezone.utc), False
+    # A bare date: an all-day event, midnight local time.
+    return dt.datetime.combine(value, dt.time(), local_tz).astimezone(dt.timezone.utc), True
+
+
+def occurrences(data, start, end, local_tz):
+    cal = icalendar.Calendar.from_ical(data)
+    for ev in recurring_ical_events.of(cal).between(start, end):
+        if str(ev.get("STATUS") or "").upper() == "CANCELLED":
+            continue
+        title = text(ev.get("SUMMARY"), 200)
+        if CANCELLED_PREFIX.match(title):
+            continue
+        dtstart = ev.get("DTSTART")
+        if dtstart is None:
+            continue
+        s, all_day = as_utc(dtstart.dt, local_tz)
+        dtend = ev.get("DTEND")
+        if dtend is not None:
+            e, _ = as_utc(dtend.dt, local_tz)
+        elif ev.get("DURATION") is not None:
+            e = s + ev.get("DURATION").dt
+        else:
+            e = s + (dt.timedelta(days=1) if all_day else dt.timedelta(0))
+        yield {
+            "id": "%s|%s" % (text(ev.get("UID"), 300), s.isoformat()),
+            "title": title,
+            "start": s.isoformat(),
+            "end": e.isoformat(),
+            "allDay": all_day,
+            "location": text(ev.get("LOCATION"), 200),
+            "joinUrl": join_url(ev),
+            "free": str(ev.get("TRANSP") or "").upper() == "TRANSPARENT",
+        }
+
+
+def main():
+    if icalendar is None:
+        fail("missing-deps", "install python-icalendar and python-recurring-ical-events")
+
+    local_tz = dt.datetime.now().astimezone().tzinfo
+    now = dt.datetime.now(dt.timezone.utc)
+    start, end = now - PAST, now + AHEAD
+
+    urls = read_urls()
+    events, failures = [], []
+    for index, url in enumerate(urls):
+        try:
+            events.extend(occurrences(fetch(url), start, end, local_tz))
+        except Exception as e:  # one bad feed must not hide the others
+            failures.append("calendar %d: %s: %s" % (index + 1, type(e).__name__, str(e)[:200]))
+
+    for failure in failures:
+        print("showtime-sync: " + failure, file=sys.stderr)
+    if failures and len(failures) == len(urls):
+        fail("fetch-failed", "no calendar could be read")
+
+    events.sort(key=lambda x: (x["start"], x["title"]))
+    payload = {"updatedAt": now.isoformat(), "events": events[:MAX_EVENTS]}
+    if failures:
+        payload["error"] = "partial"
+    write_state(payload)
+    print("%d events" % len(payload["events"]))
+
+
+if __name__ == "__main__":
+    main()

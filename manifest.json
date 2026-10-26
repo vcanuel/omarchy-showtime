@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "id": "vcanuel.showtime",
+  "name": "Showtime",
+  "version": "1.0.0",
+  "author": "Vincent Canuel",
+  "license": "MIT",
+  "description": "Never miss a meeting: your next calendar event in the bar, and a fullscreen splash a minute before it starts, with a Join button.",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Showtime",
+    "description": "The meeting in progress or the next one, with a countdown. Click joins, middle click syncs, right click opens your calendar.",
+    "category": "Productivity",
+    "allowMultiple": false,
+    "defaultSection": "centerEnd",
+    "defaults": {
+      "maxTitleLength": 28,
+      "lookaheadHours": 12,
+      "calendarUrl": ""
+    },
+    "schema": [
+      {
+        "key": "maxTitleLength",
+        "type": "integer",
+        "label": "Longest title shown in the bar",
+        "min": 8,
+        "max": 80,
+        "defaultValue": 28
+      },
+      {
+        "key": "lookaheadHours",
+        "type": "integer",
+        "label": "Show the next event when it starts within (hours)",
+        "min": 1,
+        "max": 48,
+        "defaultValue": 12
+      },
+      {
+        "key": "calendarUrl",
+        "type": "string",
+        "label": "Calendar page opened by right click (https://…)",
+        "defaultValue": ""
+      }
+    ]
+  }
+}
